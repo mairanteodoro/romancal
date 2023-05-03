@@ -18,6 +18,7 @@ from romancal.photom import PhotomStep
 from romancal.ramp_fitting import ramp_fit_step
 from romancal.saturation import SaturationStep
 from romancal.source_detection import SourceDetectionStep
+from romancal.tweakreg import TweakRegStep
 
 from ..stpipe import RomanPipeline
 
@@ -34,7 +35,7 @@ class ExposurePipeline(RomanPipeline):
     ramps to produce a 2-D slope product. Included steps are:
     dq_init, saturation, linearity, dark current, jump detection, ramp_fit,
     assign_wcs, flatfield (only applied to WFI imaging data), photom,
-    and source_detection.
+    source_detection, and tweakreg.
     """
 
     class_alias = "roman_elp"
@@ -56,6 +57,7 @@ class ExposurePipeline(RomanPipeline):
         "flatfield": FlatFieldStep,
         "photom": PhotomStep,
         "source_detection": SourceDetectionStep,
+        "tweakreg": TweakRegStep,
     }
 
     # start the actual processing
@@ -100,6 +102,7 @@ class ExposurePipeline(RomanPipeline):
                     "flat_field",
                     "photom",
                     "source_detection",
+                    "tweakreg",
                 ]:
                     result.meta.cal_step[step_str] = "SKIPPED"
 
@@ -118,6 +121,8 @@ class ExposurePipeline(RomanPipeline):
 
         result = self.photom(result)
         result = self.source_detection(result)
+        # TweakReg expects a list of datamodels and returns a ModelContainer
+        result = self.tweakreg([result])[0]
 
         # setup output_file for saving
         self.setup_output(result)
