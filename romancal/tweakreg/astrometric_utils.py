@@ -4,6 +4,7 @@ import requests
 from astropy import table
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from requests.adapters import HTTPAdapter, Retry
 
 from ..assign_wcs import utils as wcsutil
 from ..resample import resample_utils
@@ -204,16 +205,24 @@ def get_catalog(ra, dec, epoch=2016.0, sr=0.1, catalog="GAIADR3"):
     headers = {"Content-Type": "text/csv"}
     fmt = "CSV"
 
-    spec = spec_str.format(ra, dec, epoch, sr, fmt, catalog)
-    service_url = f"{SERVICELOCATION}/{service_type}?{spec}"
-    rawcat = requests.get(service_url, headers=headers, timeout=TIMEOUT)
-    r_contents = rawcat.content.decode()  # convert from bytes to a String
-    rstr = r_contents.split("\r\n")
-    # remove initial line describing the number of sources returned
-    # CRITICAL to proper interpretation of CSV data
-    del rstr[0]
-    if len(rstr) == 0:
-        print(Exception("VO catalog service returned no results."))
-        raise
+    with requests.Session() as session:
+        # set retries
+        retries = Retry(total=3, backoff_factor=0.1, status_forcelist=[104])
+        # apply retries settings to current session
+        session.mount(
+            DEF_CAT_URL.split("://")[0] + "://",
+            HTTPAdapter(max_retries=retries),
+        )
+        spec = spec_str.format(ra, dec, epoch, sr, fmt, catalog)
+        service_url = f"{SERVICELOCATION}/{service_type}?{spec}"
+        rawcat = session.get(service_url, headers=headers, timeout=TIMEOUT)
+        r_contents = rawcat.content.decode()  # convert from bytes to a String
+        rstr = r_contents.split("\r\n")
+        # remove initial line describing the number of sources returned
+        # CRITICAL to proper interpretation of CSV data
+        del rstr[0]
+        if len(rstr) == 0:
+            print(Exception("VO catalog service returned no results."))
+            raise
 
-    return table.Table.read(rstr, format="csv")
+        return table.Table.read(rstr, format="csv")
