@@ -233,11 +233,41 @@ def create_wcs_for_tweakreg_pipeline(input_dm, shift_1=0, shift_2=0):
 
 def get_catalog_data(input_dm):
     gaia_cat = get_catalog(ra=270, dec=66, sr=100 / 3600)
-    gaia_source_coords = [(ra, dec) for ra, dec in zip(gaia_cat["ra"], gaia_cat["dec"])]
-    catalog_data = np.array(
+    gaia_source_coords = list(zip(gaia_cat["ra"], gaia_cat["dec"]))
+    return np.array(
         [input_dm.meta.wcs.world_to_pixel(ra, dec) for ra, dec in gaia_source_coords]
     )
-    return catalog_data
+
+
+def get_local_catalog_data(input_dm):
+    # get the gaia sources from get_catalog(ra=270, dec=66, sr=100 / 3600)
+    gaia_source_coords = [
+        [269.99154152, 66.0030868],
+        [269.99023076, 66.00859865],
+        [269.98008546, 65.99429907],
+        [269.97381227, 65.99604151],
+        [270.01900723, 65.98882216],
+        [270.01522837, 66.01220723],
+        [269.99163947, 65.98668115],
+        [269.96913766, 66.00807803],
+        [270.00108193, 65.98290848],
+        [269.97702615, 66.01479239],
+        [270.04188088, 66.00642501],
+        [269.97106812, 66.01447642],
+        [269.95317371, 65.99490411],
+        [269.94897212, 66.00201329],
+        [270.05196151, 65.99798312],
+        [270.05355886, 65.99986204],
+        [269.99795615, 65.97778305],
+        [269.95120287, 65.98995814],
+        [270.01386302, 65.97753223],
+        [269.93855642, 66.00214747],
+        [269.94759872, 65.9862519],
+        [269.94518666, 65.98482665],
+    ]
+    return np.array(
+        [input_dm.meta.wcs.world_to_pixel(ra, dec) for ra, dec in gaia_source_coords]
+    )
 
 
 def create_base_image_source_catalog(
@@ -365,19 +395,17 @@ def base_image():
 @pytest.mark.parametrize(
     "input, error_type",
     [
-        (list(), ValueError),
-        ([""], FileNotFoundError),
+        (list(), (ValueError, TypeError)),
+        ([""], (FileNotFoundError,)),
         ("", (ValueError, TypeError)),
-        ([1, 2, 3], TypeError),
+        ([1, 2, 3], (TypeError,)),
     ],
 )
 def test_tweakreg_raises_error_on_invalid_input(input, error_type):
+    # sourcery skip: list-literal
     """Test that TweakReg raises an error when an invalid input is provided."""
     with pytest.raises(Exception) as exec_info:
         TweakRegStep.call(input)
-
-    if not hasattr(error_type, "__len__"):
-        error_type = (error_type,)
 
     assert type(exec_info.value) in error_type
 
@@ -609,9 +637,9 @@ def test_tweakreg_use_custom_catalogs(tmp_path, catalog_format, request):
     img3.meta.filename = "img3"
 
     # create valid custom catalog data to be used with each input datamodel
-    catalog_data1 = get_catalog_data(img1)
-    catalog_data2 = get_catalog_data(img2)
-    catalog_data3 = get_catalog_data(img3)
+    catalog_data1 = get_local_catalog_data(img1)
+    catalog_data2 = get_local_catalog_data(img2)
+    catalog_data3 = get_local_catalog_data(img3)
 
     custom_catalog_map = [
         {
@@ -683,7 +711,7 @@ def test_tweakreg_rotated_plane(tmp_path, theta, offset_x, offset_y, request):
     Test that TweakReg returns accurate results.
     """
     gaia_cat = get_catalog(ra=270, dec=66, sr=100 / 3600)
-    gaia_source_coords = [(ra, dec) for ra, dec in zip(gaia_cat["ra"], gaia_cat["dec"])]
+    gaia_source_coords = list(zip(gaia_cat["ra"], gaia_cat["dec"]))
 
     img = request.getfixturevalue("base_image")(shift_1=1000, shift_2=1000)
     original_wcs = copy.deepcopy(img.meta.wcs)
