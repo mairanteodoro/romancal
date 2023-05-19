@@ -239,7 +239,7 @@ def get_catalog_data(input_dm):
     )
 
 
-def get_local_catalog_data(input_dm):
+def get_local_catalog_data(input_dm, world=False):
     # get the gaia sources from get_catalog(ra=270, dec=66, sr=100 / 3600)
     gaia_source_coords = [
         [269.99154152, 66.0030868],
@@ -265,9 +265,15 @@ def get_local_catalog_data(input_dm):
         [269.94759872, 65.9862519],
         [269.94518666, 65.98482665],
     ]
-    return np.array(
-        [input_dm.meta.wcs.world_to_pixel(ra, dec) for ra, dec in gaia_source_coords]
-    )
+    if world:
+        return gaia_source_coords
+    else:
+        return np.array(
+            [
+                input_dm.meta.wcs.world_to_pixel(ra, dec)
+                for ra, dec in gaia_source_coords
+            ]
+        )
 
 
 def create_base_image_source_catalog(
@@ -344,7 +350,7 @@ def add_tweakreg_catalog_attribute(
     """
     tweakreg_catalog_filename = catalog_filename
     if catalog_data is None:
-        catalog_data = get_catalog_data(input_dm)
+        catalog_data = get_local_catalog_data(input_dm)
 
     source_catalog = create_base_image_source_catalog(
         tmp_path,
@@ -710,11 +716,12 @@ def test_tweakreg_rotated_plane(tmp_path, theta, offset_x, offset_y, request):
     """
     Test that TweakReg returns accurate results.
     """
-    gaia_cat = get_catalog(ra=270, dec=66, sr=100 / 3600)
-    gaia_source_coords = list(zip(gaia_cat["ra"], gaia_cat["dec"]))
+    # gaia_cat = get_catalog(ra=270, dec=66, sr=100 / 3600)
+    # gaia_source_coords = list(zip(gaia_cat["ra"], gaia_cat["dec"]))
 
     img = request.getfixturevalue("base_image")(shift_1=1000, shift_2=1000)
     original_wcs = copy.deepcopy(img.meta.wcs)
+    gaia_source_coords = get_local_catalog_data(img, world=True)
 
     # calculate original (x,y) for Gaia sources
     original_xy_gaia_sources = np.array(
@@ -764,6 +771,10 @@ def test_tweakreg_rotated_plane(tmp_path, theta, offset_x, offset_y, request):
         np.round(gref.separation(nref), 10)
         for gref, nref in zip(gaia_ref_source, new_ref_source)
     ]
+
+    # make sure angles <= 1e-8 deg are set to zero
+    dist1 = [0 for x in dist1 if x.value <= 1e-8]
+    dist2 = [0 for x in dist2 if x.value <= 1e-8]
 
     assert np.array([np.less_equal(d2, d1) for d1, d2 in zip(dist1, dist2)]).all()
 
