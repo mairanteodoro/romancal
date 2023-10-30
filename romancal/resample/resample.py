@@ -178,6 +178,7 @@ class ResampleData:
         """
         for exposure in self.input_models.models_grouped:
             output_model = self.blank_output
+            output_model.meta["resample"] = mk_resample()
             # Determine output file type from input exposure filenames
             # Use this for defining the output filename
             indx = exposure[0].meta.filename.rfind(".")
@@ -204,6 +205,10 @@ class ResampleData:
                 )
 
                 # apply sky subtraction
+                # TODO: mocking a sky-subtracted image (remove this later on)
+                img.meta["background"] = {}
+                img.meta.background["level"] = 0
+                img.meta.background["subtracted"] = True
                 blevel = img.meta.background.level
                 if not img.meta.background.subtracted and blevel is not None:
                     data = img.data - blevel
@@ -229,13 +234,17 @@ class ResampleData:
             if not self.in_memory:
                 # Write out model to disk, then return filename
                 output_name = output_model.meta.filename
+                # cast context array to uint32
+                output_model.context = output_model.context.astype("uint32")
                 output_model.save(output_name)
                 log.info(f"Exposure {output_name} saved to file")
-                self.output_models.append(output_name)
+                with datamodels.open(output_name) as dm:
+                    # TODO: allow path in ModelContainer.append()?
+                    self.output_models.append(dm)
             else:
                 self.output_models.append(output_model.copy())
             output_model.data *= 0.0
-            output_model.wht *= 0.0
+            output_model.weight *= 0.0
 
         return self.output_models
 
@@ -267,7 +276,7 @@ class ResampleData:
                 img, weight_type=self.weight_type, good_bits=self.good_bits
             )
             # apply sky subtraction
-            # NOTE: mocking a sky-subtracted image (remove this later on)
+            # TODO: mocking a sky-subtracted image (remove this later on)
             img.meta["background"] = {}
             img.meta.background["level"] = 0
             img.meta.background["subtracted"] = True
