@@ -7,6 +7,7 @@ import re
 from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from pathlib import Path
+import numpy as np
 
 from roman_datamodels import datamodels as rdm
 
@@ -18,6 +19,7 @@ __all__ = [
     "ModelContainer",
 ]
 
+_ONE_MB = 1 << 20
 RECOGNIZED_MEMBER_FIELDS = [
     "tweakreg_catalog",
 ]
@@ -235,9 +237,9 @@ class ModelContainer(Sequence):
             raise ValueError("Only datamodels can be used.")
 
     def extend(self, input_object):
-        if not isinstance(input_object, (Iterable, rdm.DataModel)) or isinstance(
-            input_object, str
-        ):
+        if not isinstance(
+            input_object, (Iterable, rdm.DataModel)
+        ) or isinstance(input_object, str):
             raise ValueError("Not a valid input object.")
         elif all(isinstance(x, rdm.DataModel) for x in input_object):
             self._models.extend(input_object)
@@ -305,24 +307,34 @@ class ModelContainer(Sequence):
                     if re.match(member["exptype"], x, re.IGNORECASE)
                 ):
                     infiles.append(member)
-                    logger.debug(f'Files accepted for processing {member["expname"]}:')
+                    logger.debug(
+                        f'Files accepted for processing {member["expname"]}:'
+                    )
         else:
             infiles = list(asn_data["products"][0]["members"])
 
         asn_dir = op.dirname(asn_file_path) if asn_file_path else ""
         # Only handle the specified number of members.
-        sublist = infiles[: self.asn_n_members] if self.asn_n_members else infiles
+        sublist = (
+            infiles[: self.asn_n_members] if self.asn_n_members else infiles
+        )
         try:
             for member in sublist:
                 filepath = op.join(asn_dir, member["expname"])
-                update_model = any(attr in member for attr in RECOGNIZED_MEMBER_FIELDS)
+                update_model = any(
+                    attr in member for attr in RECOGNIZED_MEMBER_FIELDS
+                )
                 if update_model or self._save_open:
                     m = rdm.open(filepath, memmap=self._memmap)
                     m.meta["asn"] = {"exptype": member["exptype"]}
                     for attr, val in member.items():
                         if attr in RECOGNIZED_MEMBER_FIELDS:
                             if attr == "tweakreg_catalog":
-                                val = op.join(asn_dir, val) if val.strip() else None
+                                val = (
+                                    op.join(asn_dir, val)
+                                    if val.strip()
+                                    else None
+                                )
                             m.meta[attr] = val
 
                     if not self._save_open:
@@ -455,7 +467,9 @@ class ModelContainer(Sequence):
 
         group_dict = OrderedDict()
         for i, model in enumerate(self._models):
-            model = model if isinstance(model, rdm.DataModel) else rdm.open(model)
+            model = (
+                model if isinstance(model, rdm.DataModel) else rdm.open(model)
+            )
 
             if not self._save_open:
                 model = rdm.open(model, memmap=self._memmap)
@@ -524,10 +538,88 @@ class ModelContainer(Sequence):
         crds_header = {}
         if len(self._models):
             model = self._models[0]
-            model = model if isinstance(model, rdm.DataModel) else rdm.open(model)
+            model = (
+                model if isinstance(model, rdm.DataModel) else rdm.open(model)
+            )
             crds_header |= model.get_crds_parameters()
 
         return crds_header
+
+    def set_buffer(self, buffer_size, overlap=None):
+        """Set buffer size for scrolling section-by-section access.
+
+        Parameters
+        ----------
+        buffer_size : float, None
+            Define size of buffer in MB for each section.
+            If `None`, a default buffer size of 1MB will be used.
+
+        overlap : int, optional
+            Define the number of rows of overlaps between sections.
+            If `None`, no overlap will be used.
+        """
+        self.overlap = 0 if overlap is None else overlap
+        self.grow = 0
+
+        with rdm.open(self._models[0]) as model:
+            imrows, imcols = model.data.shape
+            data_item_size = model.data.itemsize
+            data_item_type = model.data.dtype
+            del model
+
+        min_buffer_size = imcols * data_item_size
+
+        self.buffer_size = (
+            min_buffer_size if buffer_size is None else (buffer_size * _ONE_MB)
+        )
+
+        section_nrows = min(imrows, int(self.buffer_size // min_buffer_size))
+
+        if section_nrows == 0:
+            self.buffer_size = min_buffer_size
+            logger.warning(
+                "WARNING: Buffer size is too small to hold a single row."
+                f"Increasing buffer size to {self.buffer_size / _ONE_MB}MB"
+            )
+            section_nrows = 1
+
+        nbr = section_nrows - self.overlap
+        nsec = (imrows - self.overlap) // nbr
+        if (imrows - self.overlap) % nbr > 0:
+            nsec += 1
+
+        self.n_sections = nsec
+        self.nbr = nbr
+        self.section_nrows = section_nrows
+        self.imrows = imrows
+        self.imcols = imcols
+        self.imtype = data_item_type
+
+    def get_sections(self):
+        """Iterator to return the sections from all members of the container."""
+
+        for k in range(self.n_sections):
+            e1 = k * self.nbr
+            e2 = e1 + self.section_nrows
+
+            if k == self.n_sections - 1:  # last section
+                e2 = min(e2, self.imrows)
+                e1 = min(e1, e2 - self.overlap - 1)
+
+            data_list = np.empty(
+                (len(self._models), e2 - e1, self.imcols), dtype=self.imtype
+            )
+            wht_list = np.empty(
+                (len(self._models), e2 - e1, self.imcols), dtype=self.imtype
+            )
+            for i, model in enumerate(self._models):
+                model = rdm.open(model, memmap=self._memmap)
+
+                data_list[i, :, :] = model.data[e1:e2].copy()
+                wht_list[i, :, :] = model.weight[e1:e2].copy()
+                del model
+
+            yield (data_list, wht_list, (e1, e2))
 
 
 def make_file_with_index(file_path, idx):
