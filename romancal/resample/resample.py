@@ -197,6 +197,7 @@ class ResampleData:
             )
 
             log.info(f"{len(exposure)} exposures to drizzle together")
+            output_list = []
             for img in exposure:
                 img = datamodels.open(img)
                 # TODO: should weight_type=None here?
@@ -238,11 +239,11 @@ class ResampleData:
                 output_model.context = output_model.context.astype("uint32")
                 output_model.save(output_name)
                 log.info(f"Exposure {output_name} saved to file")
-                with datamodels.open(output_name) as dm:
-                    # TODO: allow path in ModelContainer.append()?
-                    self.output_models.append(dm)
+                output_list.append(output_name)
             else:
-                self.output_models.append(output_model.copy())
+                output_list.append(output_model.copy())
+
+            self.output_models = ModelContainer(output_list, return_open=self.in_memory)
             output_model.data *= 0.0
             output_model.weight *= 0.0
 
