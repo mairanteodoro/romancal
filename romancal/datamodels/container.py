@@ -7,8 +7,8 @@ import re
 from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-import numpy as np
 
+import numpy as np
 from roman_datamodels import datamodels as rdm
 
 from romancal.lib.basic_utils import is_association
@@ -237,9 +237,9 @@ class ModelContainer(Sequence):
             raise ValueError("Only datamodels can be used.")
 
     def extend(self, input_object):
-        if not isinstance(
-            input_object, (Iterable, rdm.DataModel)
-        ) or isinstance(input_object, str):
+        if not isinstance(input_object, (Iterable, rdm.DataModel)) or isinstance(
+            input_object, str
+        ):
             raise ValueError("Not a valid input object.")
         elif all(isinstance(x, rdm.DataModel) for x in input_object):
             self._models.extend(input_object)
@@ -307,34 +307,24 @@ class ModelContainer(Sequence):
                     if re.match(member["exptype"], x, re.IGNORECASE)
                 ):
                     infiles.append(member)
-                    logger.debug(
-                        f'Files accepted for processing {member["expname"]}:'
-                    )
+                    logger.debug(f'Files accepted for processing {member["expname"]}:')
         else:
             infiles = list(asn_data["products"][0]["members"])
 
         asn_dir = op.dirname(asn_file_path) if asn_file_path else ""
         # Only handle the specified number of members.
-        sublist = (
-            infiles[: self.asn_n_members] if self.asn_n_members else infiles
-        )
+        sublist = infiles[: self.asn_n_members] if self.asn_n_members else infiles
         try:
             for member in sublist:
                 filepath = op.join(asn_dir, member["expname"])
-                update_model = any(
-                    attr in member for attr in RECOGNIZED_MEMBER_FIELDS
-                )
+                update_model = any(attr in member for attr in RECOGNIZED_MEMBER_FIELDS)
                 if update_model or self._save_open:
                     m = rdm.open(filepath, memmap=self._memmap)
                     m.meta["asn"] = {"exptype": member["exptype"]}
                     for attr, val in member.items():
                         if attr in RECOGNIZED_MEMBER_FIELDS:
                             if attr == "tweakreg_catalog":
-                                val = (
-                                    op.join(asn_dir, val)
-                                    if val.strip()
-                                    else None
-                                )
+                                val = op.join(asn_dir, val) if val.strip() else None
                             m.meta[attr] = val
 
                     if not self._save_open:
@@ -467,9 +457,7 @@ class ModelContainer(Sequence):
 
         group_dict = OrderedDict()
         for i, model in enumerate(self._models):
-            model = (
-                model if isinstance(model, rdm.DataModel) else rdm.open(model)
-            )
+            model = model if isinstance(model, rdm.DataModel) else rdm.open(model)
 
             if not self._save_open:
                 model = rdm.open(model, memmap=self._memmap)
@@ -538,9 +526,7 @@ class ModelContainer(Sequence):
         crds_header = {}
         if len(self._models):
             model = self._models[0]
-            model = (
-                model if isinstance(model, rdm.DataModel) else rdm.open(model)
-            )
+            model = model if isinstance(model, rdm.DataModel) else rdm.open(model)
             crds_header |= model.get_crds_parameters()
 
         return crds_header

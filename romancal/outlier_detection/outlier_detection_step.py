@@ -2,15 +2,14 @@
 
 import contextlib
 import os
-
 from functools import partial
 
 from roman_datamodels import datamodels
 
 from romancal.datamodels import ModelContainer
-from ..stpipe import RomanStep
-
 from romancal.outlier_detection import outlier_detection
+
+from ..stpipe import RomanStep
 
 # Categorize all supported versions of outlier_detection
 outlier_registry = {

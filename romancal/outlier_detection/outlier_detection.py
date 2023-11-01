@@ -1,22 +1,22 @@
 """Primary code for performing outlier detection on JWST observations."""
 
-from functools import partial
 import logging
 import warnings
+from functools import partial
 
 import numpy as np
 from astropy.stats import sigma_clip
-from scipy import ndimage
+from astropy.units import Quantity
 from drizzle.cdrizzle import tblot
-
-from roman_datamodels import datamodels as rdm
 from roman_datamodels import DataModel
-from romancal.lib import dqflags
+from roman_datamodels import datamodels as rdm
+from scipy import ndimage
 
 from romancal.datamodels import ModelContainer
+from romancal.lib import dqflags
 from romancal.resample import resample
 from romancal.resample.resample_utils import build_driz_weight, calc_gwcs_pixmap
-from roman_datamodels.maker_utils import mk_datamodel
+
 from ..stpipe import RomanStep
 
 log = logging.getLogger(__name__)
@@ -167,7 +167,7 @@ class OutlierDetection:
 
         # read in values from that row for each parameter
         for kw in list(self.outlierpars.keys()):
-            self.outlierpars[kw] = ref_model["outlierpars_table.{0}".format(kw)]
+            self.outlierpars[kw] = ref_model[f"outlierpars_table.{kw}"]
 
     def build_suffix(self, **pars):
         """Build suffix.
@@ -182,7 +182,7 @@ class OutlierDetection:
         )
         if "resample_suffix" in pars:
             del pars["resample_suffix"]
-        log.debug("Defined output product suffix as: {}".format(self.resample_suffix))
+        log.debug(f"Defined output product suffix as: {self.resample_suffix}")
 
     def do_detection(self):
         """Flag outlier pixels in DQ of input images."""
@@ -203,22 +203,21 @@ class OutlierDetection:
             # for non-dithered data, the resampled image is just the original image
             drizzled_models = self.input_models
             for i in range(len(self.input_models)):
-                drizzled_models[i].wht = build_driz_weight(
+                drizzled_models[i].weight = build_driz_weight(
                     self.input_models[i],
                     weight_type="ivm",
                     good_bits=pars["good_bits"],
                 )
 
         # Initialize intermediate products used in the outlier detection
-        with rdm.open(drizzled_models[0]) as dm0:
-            median_model = mk_datamodel(rdm.ImageModel, shape=dm0.data.shape)
-            median_model.update(dm0)
-            median_model.meta.wcs = dm0.meta.wcs
+        median_model = rdm.open(drizzled_models[0]).copy()
 
         # Perform median combination on set of drizzled mosaics
-        median_model.data = self.create_median(drizzled_models)
+        median_model.data = Quantity(
+            self.create_median(drizzled_models), unit=median_model.data.unit
+        )
         median_model_output_path = self.make_output_path(
-            basepath=median_model.meta.filename.replace(self.resample_suffix, ".fits"),
+            basepath=median_model.meta.filename.replace(self.resample_suffix, ".asdf"),
             suffix="median",
         )
         median_model.save(median_model_output_path)
@@ -231,7 +230,7 @@ class OutlierDetection:
 
         else:
             # Median image will serve as blot image
-            blot_models = ModelContainer(open_models=False)
+            blot_models = ModelContainer(return_open=False)
             for i in range(len(self.input_models)):
                 blot_models.append(median_model)
 
@@ -266,7 +265,7 @@ class OutlierDetection:
         # For each model, compute the bad-pixel threshold from the weight arrays
         for resampled in resampled_models:
             m = rdm.open(resampled)
-            weight = m.wht
+            weight = m.weight
             # necessary in order to assure that mask gets applied correctly
             if hasattr(weight, "_mask"):
                 del weight._mask
@@ -336,7 +335,7 @@ class OutlierDetection:
         sinscl = self.outlierpars.get("sinscl", 1.0)
 
         # Initialize container for output blot images
-        blot_models = ModelContainer(open_models=False)
+        blot_models = []
 
         log.info("Blotting median")
         for model in self.input_models:
@@ -347,8 +346,9 @@ class OutlierDetection:
             blotted_median.dq *= 0  # None
 
             # apply blot to re-create model.data from median image
-            blotted_median.data = gwcs_blot(
-                median_model, model, interp=interp, sinscl=sinscl
+            blotted_median.data = Quantity(
+                gwcs_blot(median_model, model, interp=interp, sinscl=sinscl),
+                unit=blotted_median.data.unit,
             )
 
             model_path = self.make_output_path(
@@ -360,7 +360,7 @@ class OutlierDetection:
             # Append model name to the ModelContainer so it is not passed in memory
             blot_models.append(model_path)
 
-        return blot_models
+        return ModelContainer(blot_models, return_open=False)
 
     def detect_outliers(self, blot_models):
         """Flag DQ array for cosmic rays in input images.
@@ -389,7 +389,6 @@ class OutlierDetection:
         for image, blot in zip(self.input_models, blot_models):
             blot = rdm.open(blot)
             flag_cr(image, blot, **self.outlierpars)
-            blot.close()
             del blot
 
         if self.converted:
@@ -433,14 +432,15 @@ def flag_cr(
         Boolean to indicate whether blot_image is created from resampled,
         dithered data or not
     """
-    snr1, snr2 = [float(val) for val in snr.split()]
-    scale1, scale2 = [float(val) for val in scale.split()]
+    snr1, snr2 = (float(val) for val in snr.split())
+    scale1, scale2 = (float(val) for val in scale.split())
 
     # Get background level of science data if it has not been subtracted, so it
     # can be added into the level of the blotted data, which has been
     # background-subtracted
     if (
-        sci_image.meta.background.subtracted is False
+        hasattr(sci_image.meta, "background")
+        and sci_image.meta.background.subtracted is False
         and sci_image.meta.background.level is not None
     ):
         subtracted_background = sci_image.meta.background.level
@@ -451,7 +451,7 @@ def flag_cr(
 
     sci_data = sci_image.data
     blot_data = blot_image.data
-    blot_deriv = abs_deriv(blot_data)
+    blot_deriv = abs_deriv(blot_data.value)
     err_data = np.nan_to_num(sci_image.err)
 
     # create the outlier mask
@@ -462,8 +462,8 @@ def flag_cr(
         # Create a boolean mask based on a scaled version of
         # the derivative image (dealing with interpolating issues?)
         # and the standard n*sigma above the noise
-        threshold1 = scale1 * blot_deriv + snr1 * err_data
-        mask1 = np.greater(diff_noise, threshold1)
+        threshold1 = scale1 * blot_deriv + snr1 * err_data.value
+        mask1 = np.greater(diff_noise.value, threshold1)
 
         # Smooth the boolean mask with a 3x3 boxcar kernel
         kernel = np.ones((3, 3), dtype=int)
@@ -471,8 +471,8 @@ def flag_cr(
 
         # Create a 2nd boolean mask based on the 2nd set of
         # scale and threshold values
-        threshold2 = scale2 * blot_deriv + snr2 * err_data
-        mask2 = np.greater(diff_noise, threshold2)
+        threshold2 = scale2 * blot_deriv + snr2 * err_data.value
+        mask2 = np.greater(diff_noise.value, threshold2)
 
         # Final boolean mask
         cr_mask = mask1_smoothed & mask2
@@ -482,7 +482,7 @@ def flag_cr(
 
         # straightforward detection of outliers for non-dithered data since
         # err_data includes all noise sources (photon, read, and flat for baseline)
-        cr_mask = np.greater(diff_noise, snr1 * err_data)
+        cr_mask = np.greater(diff_noise.value, snr1 * err_data.value)
 
     # Count existing DO_NOT_USE pixels
     count_existing = np.count_nonzero(sci_image.dq & DO_NOT_USE)
@@ -549,11 +549,11 @@ def gwcs_blot(median_model, blot_img, interp="poly5", sinscl=1.0):
 
     # Compute the mapping between the input and output pixel coordinates
     pixmap = calc_gwcs_pixmap(blot_wcs, median_model.meta.wcs, blot_img.data.shape)
-    log.debug("Pixmap shape: {}".format(pixmap[:, :, 0].shape))
-    log.debug("Sci shape: {}".format(blot_img.data.shape))
+    log.debug(f"Pixmap shape: {pixmap[:, :, 0].shape}")
+    log.debug(f"Sci shape: {blot_img.data.shape}")
 
     pix_ratio = 1
-    log.info("Blotting {} <-- {}".format(blot_img.data.shape, median_model.data.shape))
+    log.info(f"Blotting {blot_img.data.shape} <-- {median_model.data.shape}")
 
     outsci = np.zeros(blot_img.shape, dtype=np.float32)
 
