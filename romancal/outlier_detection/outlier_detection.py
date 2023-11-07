@@ -1,22 +1,22 @@
 """Primary code for performing outlier detection on JWST observations."""
 
+from functools import partial
 import logging
 import warnings
-from functools import partial
 
 import numpy as np
 from astropy.stats import sigma_clip
 from astropy.units import Quantity
-from drizzle.cdrizzle import tblot
-from roman_datamodels import DataModel
-from roman_datamodels import datamodels as rdm
 from scipy import ndimage
+from drizzle.cdrizzle import tblot
+
+from roman_datamodels import datamodels as rdm
+from roman_datamodels import DataModel
+from romancal.lib import dqflags
 
 from romancal.datamodels import ModelContainer
-from romancal.lib import dqflags
 from romancal.resample import resample
 from romancal.resample.resample_utils import build_driz_weight, calc_gwcs_pixmap
-
 from ..stpipe import RomanStep
 
 log = logging.getLogger(__name__)
@@ -386,10 +386,10 @@ class OutlierDetection:
 
         """
         log.info("Flagging outliers")
-        for image, blot in zip(self.input_models, blot_models):
+        for i, (image, blot) in enumerate(zip(self.input_models, blot_models)):
             blot = rdm.open(blot)
             flag_cr(image, blot, **self.outlierpars)
-            del blot
+            self.input_models[i] = image
 
         if self.converted:
             # Make sure actual input gets updated with new results
