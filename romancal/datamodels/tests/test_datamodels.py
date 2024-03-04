@@ -504,3 +504,48 @@ def test_make_file_with_index(filename, idx, expected_filename_result, tmp_path)
     result = make_file_with_index(file_path=filepath, idx=idx)
 
     assert result == str(tmp_path / expected_filename_result)
+
+
+@pytest.mark.parametrize(
+    "members_mapping, number_of_members_to_load",
+    [
+        (
+            [
+                {"expname": "filename1", "exptype": "science"},
+                {"expname": "filename2", "exptype": "science"},
+                {"expname": "filename3", "exptype": "science"},
+            ],
+            1,
+        ),
+        (
+            [
+                {"expname": "filename1", "exptype": "science"},
+                {"expname": "filename2", "exptype": "science"},
+                {"expname": "filename3", "exptype": "science"},
+                {"expname": "filename4", "exptype": "science"},
+            ],
+            2,
+        ),
+        (
+            [
+                {"expname": "filename1", "exptype": "science"},
+                {"expname": "filename2", "exptype": "science"},
+                {"expname": "filename3", "exptype": "science"},
+                {"expname": "filename4", "exptype": "science"},
+            ],
+            3,
+        ),
+    ],
+)
+def test_load_datamodels_using_asn_n_members(
+    members_mapping, number_of_members_to_load, tmp_path, create_mock_asn_file
+):
+    asn_file = create_mock_asn_file(tmp_path, members_mapping=members_mapping)
+    # do not load or save datamodels
+    mc = ModelContainer(
+        asn_file,
+        asn_n_members=number_of_members_to_load,
+        save_open=False,
+        return_open=False,
+    )
+    assert len(mc) == number_of_members_to_load
