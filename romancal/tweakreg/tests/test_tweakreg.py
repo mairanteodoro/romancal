@@ -1004,3 +1004,25 @@ def test_tweakreg_skips_invalid_exposure_types(exposure_type, tmp_path, base_ima
             assert hasattr(model.meta.cal_step, "tweakreg")
             assert model.meta.cal_step.tweakreg == "SKIPPED"
             res.shelve(model, i, modify=False)
+
+
+def test_tweakreg_skips_invalid_exposure_types_mixed(tmp_path, base_image):
+    """Test that TweakReg updates meta.cal_step with tweakreg = COMPLETE."""
+    img1 = base_image(shift_1=1000, shift_2=1000)
+    add_tweakreg_catalog_attribute(tmp_path, img1, catalog_filename="img_1")
+    img2 = base_image(shift_1=2000, shift_2=2000)
+    img2.meta.exposure.type = "WFI_GRISM"
+    add_tweakreg_catalog_attribute(tmp_path, img2, catalog_filename="img_2")
+    img3 = base_image(shift_1=3000, shift_2=3000)
+    add_tweakreg_catalog_attribute(tmp_path, img3, catalog_filename="img_3")
+    res = trs.TweakRegStep.call([img1, img2, img3])
+
+    assert type(res) == ModelLibrary
+    with res:
+        for i, model in enumerate(res):
+            assert hasattr(model.meta.cal_step, "tweakreg")
+            if i == 1:
+                assert model.meta.cal_step.tweakreg == "SKIPPED"
+            else:
+                assert model.meta.cal_step.tweakreg == "COMPLETE"
+            res.shelve(model, i, modify=False)
