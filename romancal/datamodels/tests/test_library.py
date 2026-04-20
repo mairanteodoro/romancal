@@ -84,12 +84,12 @@ def test_assign_member_to_model_sets_attributes(example_library):
     model = dm.ImageModel.create_fake_data(shape=(2, 2))
     # Ensure source_catalog exists
     model.meta["source_catalog"] = {}
-    member = {"tweakreg_catalog": "cat.ecsv"}
+    member = {"tweakreg_catalog": "cat.parquet"}
     example_library._asn = {"table_name": "table1", "asn_pool": "pool1"}
 
     example_library._assign_member_to_model(model, member)
 
-    assert model.meta.source_catalog.tweakreg_catalog_name == "cat.ecsv"
+    assert model.meta.source_catalog.tweakreg_catalog_name == "cat.parquet"
     assert model.meta.asn.table_name == "table1"
     assert model.meta.asn.pool_name == "pool1"
 
@@ -116,13 +116,13 @@ def test_assign_member_to_model_creates_source_catalog(example_library):
     # Remove source_catalog if present
     if hasattr(model.meta, "source_catalog"):
         del model.meta["source_catalog"]
-    member = {"tweakreg_catalog": "cat.ecsv"}
+    member = {"tweakreg_catalog": "cat.parquet"}
     example_library._asn = {}
 
     example_library._assign_member_to_model(model, member)
 
     assert getattr(model.meta, "source_catalog", None) is not None
-    assert model.meta.source_catalog.tweakreg_catalog_name == "cat.ecsv"
+    assert model.meta.source_catalog.tweakreg_catalog_name == "cat.parquet"
 
 
 def test_assign_member_to_model_creates_asn(example_library):
