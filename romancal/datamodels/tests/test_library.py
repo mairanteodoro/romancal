@@ -141,6 +141,7 @@ def test_assign_member_to_model_creates_asn(example_library):
     assert model.meta.asn.table_name == "table1"
     assert model.meta.asn.pool_name == "pool1"
 
+
 def test_assign_member_to_model_skips_asn_attrs(example_library):
     """
     Test that _assign_member_to_model skips asn attrs not present in self.asn.
@@ -155,4 +156,3 @@ def test_assign_member_to_model_skips_asn_attrs(example_library):
     example_library._assign_member_to_model(model, member)
 
     assert not hasattr(model.meta, "asn")
-
