@@ -1,4 +1,5 @@
 import copy
+import json
 import os
 
 import numpy as np
@@ -9,7 +10,6 @@ from astropy import units as u
 from astropy.modeling import models
 from astropy.table import Table
 from numpy.random import default_rng
-import json
 
 from romancal.datamodels import ModelLibrary
 from romancal.tweakreg.tweakreg_step import TweakRegStep, _validate_catalog_columns
