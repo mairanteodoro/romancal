@@ -7,72 +7,60 @@ Description
 Overview
 --------
 This step uses the coordinates of point-like sources from an input catalog
-(i.e. the result from `SourceCatalogStep` recorded under the input model's
-`meta.source_catalog` metadata, either as `meta.source_catalog.tweakreg_catalog`
-(in-memory catalog) or `meta.source_catalog.tweakreg_catalog_name` (catalog filename))
-and compares them with the coordinates from a Gaia catalog to compute corrections to
+(i.e. the result from `SourceCatalogStep` saved in the
+`meta.source_catalog.tweakreg_catalog_name` attribute) and compares them with the
+coordinates from a Gaia catalog to compute corrections to
 the WCS of the input images such that sky catalogs obtained from the image catalogs
 using the corrected WCS will align on the sky.
 
 Custom Source Catalogs
 ----------------------
-For the ``tweakreg`` step to use user-provided input source catalogs,
-``use_custom_catalogs`` parameter of the ``tweakreg`` step must be set to
-`True`.
-
-To provide a custom catalog for a given input model, set
-``meta.source_catalog.tweakreg_catalog_name`` to the custom catalog filename.
-Alternatively, an in-memory catalog may be supplied via
-``meta.source_catalog.tweakreg_catalog``.
-
-.. note::
-    ``TweakRegStep`` expects ``meta.source_catalog`` to be present on each input
-    model. If it is missing, the step will raise an ``AttributeError``.
-    Running ``SourceCatalogStep`` will populate ``meta.source_catalog``; otherwise
-    users must ensure it exists before setting ``meta.source_catalog.*`` fields.
-
-.. note::
-    If ``meta.source_catalog`` is missing on a model, you can create it before setting
-    the catalog fields, e.g. ``model.meta["source_catalog"] = {}``.
-
-The catalog must be in a format automatically recognized by
-:py:meth:`~astropy.table.Table.read`. The catalog must contain
+Custom source catalogs can be supplied through
+``meta.source_catalog.tweakreg_catalog`` (in-memory table) or
+``meta.source_catalog.tweakreg_catalog_name`` (file path). The catalog must
+be in a format supported by :py:meth:`~astropy.table.Table.read` (or parquet
+for ``.parquet`` files). The catalog must contain
 either ``'x'`` and ``'y'`` or ``'x_psf'`` and ``'y_psf'`` columns which
 indicate source *image* coordinates (in pixels). Pixel coordinates are
 0-indexed.
 
+Association files can also be used as ``tweakreg`` input for custom catalogs.
+When an association is provided, ``tweakreg`` reads the custom catalog
+information for each member from that member's ``tweakreg_catalog`` attribute
+and sets it as the value for that member's
+``meta.source_catalog.tweakreg_catalog_name`` metadata.
+For example, the following association contains two members
+(``image1.asdf`` and ``image2.asdf``) with custom catalogs and one member
+(``image3.asdf``) without a custom catalog:
 
-In addition to setting ``meta.source_catalog.tweakreg_catalog_name`` on input data
-models, the ``tweakreg_step`` also supports two other ways of supplying custom
-source catalogs to the step:
+  .. code-block:: json
 
-1. Adding ``tweakreg_catalog`` attribute to the ``members`` of the input ASN
-   table - see `~roman.datamodels.ModelLibrary` for more details.
-   Catalog file names are relative to ASN file path.
+    {
+      "asn_type": "tweakreg",
+      "asn_id": "tweakreg_12345678",
+      "members": [
+        {
+          "expname": "image1.asdf",
+          "tweakreg_catalog": "/path/to/image1_catalog.parquet"
+        },
+        {
+          "expname": "image2.asdf",
+          "tweakreg_catalog": "/path/to/image2_catalog.parquet"
+        },
+        {
+          "expname": "image3.asdf",
+        }
+      ]
+    }
 
-2. Providing a simple two-column text file, specified via step's parameter
-   ``catfile``, that contains input data models' file names in the first column
-   and the file names of the corresponding catalogs in the second column.
-   Catalog file names are relative to ``catfile`` file path.
-
-Specifying custom source catalogs via either the input ASN table or
-``catfile`` will set (or update) the per-model metadata used by ``TweakRegStep``
-to locate the catalog. ``TweakRegStep`` reads custom catalog information from
-``meta.source_catalog.tweakreg_catalog_name`` (or, for in-memory catalogs,
-``meta.source_catalog.tweakreg_catalog``).
+In this case, ``tweakreg`` will read the custom catalogs for ``image1.asdf`` and
+``image2.asdf`` from the specified file paths and use them for alignment, while
+it will attempt to read the source catalog for ``image3.asdf`` from the file path
+specified in its ``meta.source_catalog.tweakreg_catalog_name`` metadata
+(which is expected to be set by a previous step such as `SourceCatalogStep`).
 
 .. note::
-    When a data model file name is listed in ``catfile`` but the corresponding
-    source catalog file name is left empty, the step will treat that as "no
-    custom catalog provided" for that model.
-
-.. note::
-    If an input data model is not listed in the ``catfile`` and does not have
-    custom catalog metadata populated, then the catalog information already
-    present under ``meta.source_catalog`` will be used. If no catalog is
-    available under ``meta.source_catalog``, the step will fail with an
-    ``AttributeError``; run ``SourceCatalogStep`` first or provide a custom
-    catalog.
+    ``tweakreg`` requires ``meta.source_catalog`` to be present.
 
 Alignment
 ---------
@@ -124,31 +112,16 @@ Step Arguments
 
 **Catalog parameters:**
 
-* ``use_custom_catalogs``: A boolean that indicates whether
-  to use user-provided catalogs (as specified via ``catfile`` / ASN member
-  metadata / ``meta.source_catalog.*``) instead of relying solely on catalogs
-  produced by ``SourceCatalogStep`` (Default=`False`).
-
-  .. note::
-    If `True`, the user must provide a valid custom catalog for each input model
-    (typically via ``meta.source_catalog.tweakreg_catalog_name`` or ``catfile``).
 
 * ``catalog_format``: A `str` indicating one of the catalog output file format
   supported by :py:class:`astropy.table.Table` (Default='ascii.ecsv').
 
   .. note::
-    - This option must be provided whenever `use_custom_catalogs = True`.
-
     - The full list of supported formats can be found on
       the `astropy`'s `Built-In Table Readers/Writers`_ webpage.
 
 .. _`Built-In Table Readers/Writers`: https://docs.astropy.org/en/stable/io/unified.html#built-in-table-readers-writers
 
-* ``catfile``: Name of the file with a list of custom user-provided catalogs
-  (Default='').
-
-  .. note::
-    - This option must be provided whenever `use_custom_catalogs = True`.
 
 * ``catalog_path``: A `str` indicating the catalogs output file path (Default='').
 
@@ -236,7 +209,7 @@ Parameters used for absolute astrometry to a reference catalog.
 
 * ``abs_separation``: Minimum object separation in arcsec. It is recommended
   that a value smaller than ``separation`` be used for this parameter
-  (e.g. 10 times smaller) (Default=0.1).
+  (e.g. 10 times smaller) (Default=1.0).
 
 * ``abs_tolerance``: Matching tolerance for ``xyxymatch`` in arcsec (Default=0.7).
 
