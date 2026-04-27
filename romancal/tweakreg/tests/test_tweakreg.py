@@ -489,7 +489,6 @@ def test_tweakreg_custom_catalog_via_asn_member_attribute(
 
     res = TweakRegStep.call(
         asn_filepath,
-        use_custom_catalogs=True,
     )
 
     assert isinstance(res, ModelLibrary)
