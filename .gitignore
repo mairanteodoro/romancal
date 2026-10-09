@@ -74,3 +74,7 @@ pip-wheel-metadata/
 
 # uv
 uv.lock
+
+# Local POC writeups (do not commit)
+poc_skyvals_viz/POC_REPORT.md
+**/POC_REPORT.md
